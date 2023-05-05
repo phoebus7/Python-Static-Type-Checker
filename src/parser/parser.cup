@@ -1,0 +1,962 @@
+import java_cup.runtime.*;
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Stack;
+import java.util.Collections;
+import src.ast.main.*;
+import src.ast.expressions.*;
+import src.ast.statements.*;
+import org.json.simple.JSONObject;
+import org.json.simple.JSONArray;
+import java.io.FileWriter;
+
+
+init with {:
+	symbolTable = new HashMap<String, Type>();
+	stmts = new HashMap<Integer, HashMap<Integer, Statement>>();
+	root = new AST("Program");
+	star_exprs = new ArrayList<>();
+	jsonArray = new JSONArray();
+	funcParams = new ArrayList<>();
+:};
+
+
+parser code {:
+	public HashMap<String, Type> symbolTable;
+	public HashMap<Integer, HashMap<Integer, Statement>> stmts;
+	public AST root;
+	public ArrayList<Expression> star_exprs;
+	public String fname;
+	public JSONArray jsonArray;
+	public ArrayList<Type> funcParams;
+
+	public void DFS(AST node) {
+		node.visited = true;
+		if (node.getName() != "Program") {
+			Type t = node.getStatement().getType();
+			String error = "";
+			if (t == Type.SYNTAXERROR || t == Type.NOTDEFINED) {
+				error = fname + ":" + node.getStatement().getLoc().line + ": " + node.getStatement().error;
+			}
+			if (node.getStatement().getClass().getSimpleName().equals("Assignment")) {
+				JSONObject json = new JSONObject();
+				json.put("variableName", ((Assignment)node.getStatement()).getLabel().getName());
+				json.put("variableType", t.toString());
+				json.put("line", node.getStatement().getLoc().line);
+				json.put("col", node.getStatement().getLoc().column);
+				if (!error.isEmpty())
+					json.put("error", error);
+				else 
+					json.put("error", null);
+				jsonArray.add(json);
+			}
+		}
+		for (int i = 0; i < node.getChilds().size(); ++ i) {
+			if (!node.getChild(i).visited)
+				DFS(node.getChild(i));
+		}
+	}
+
+	
+	
+:};
+
+
+		 
+terminal INTEGER, FLOAT, BOOL, STRING, ID, COMPLEX,
+		 OR, AND, NOT, IF_STMT, ELSE_STMT, ELIF_STMT, WHILE_STMT,
+		 RETURN_STMT, LAMBDA, FOR_STMT,	CLASS_STMT, FUN_STMT,
+		 IS, ISNOT, IN, NOTIN, BIT_AND, BIT_OR,		 
+		 BIT_XOR, BIT_NOT, RIGHT_SHIFT, ARROW_RIGHT,
+		 LEFT_SHIFT, LSQB, RSQB, LPAR, RPAR,
+		 LBRACE, RBRACE, COMMA, DOT, COLON,
+		 SEMICOLON, ASSIGNMENT, ADDITION, WALRUS_ASSIGNMENT,
+		 SHORTADDITION, SUBSTRACTION, SHORTSUBSTRACTION,
+		 MULTIPLICATION, SHORTMULTIPLICATION, FLOATDIVISION,
+		 SHORTFLOATDIVISION, INTDIVISION, SHORTINTDIVISION,
+		 MODULO, SHORTMODULO, DEGREE, SHORTDEGREE, EQ, NE, GT,
+		 LT, GE, LE, NL, INDENT, DEDENT, AS, TRY_STMT, ASYNC, EXCEPT_STMT, FINALLY_STMT, AT, AWAIT;
+
+
+non terminal file, statements, statement, simple_stmts, simple_stmt, 
+			 compound_stmt, assign_stmt, disjunction, conjunction, inversion, comparison, compare_op_bitwirs_or_pairs,
+			 compare_op_bitwirs_or_pair, comparison_expression, star_expressions, star_expression, expression, named_expression, 
+			 assignment_expression, comparator, lambdef, lambda_params, lambda_param_no_default, comma_kwarg_or_starred, comma_kwarg_or_double_starred,
+             lambda_param_with_default, lambda_slash_no_default, lambda_star_etc, star_targets, star_target, star_targets_list_seq, star_targets_list_seq_plus,
+			 star_targets_tuple_seq, t_primary, t_lookahead, starred_expression, assignmentexpr_or_expression, slices, slice,
+			class_def, class_def_raw, decorators,
+			function_def, function_def_raw,
+			params, parameters, slash_no_default, param_no_default, param_no_default_plus, param_with_default, param_with_default_plus,
+			star_etc, slash_with_default, param_maybe_default, param_maybe_default_plus, kwds, param_no_default_star_annotation, param, param_star_annotation, default,
+			annotation, star_annotation,
+			lambda_slash_with_default, eq_bitwise_or, noteq_bitwise_or, lte_bitwise_or, lt_bitwise_or, gte_bitwise_or, expression_or,
+			 gt_bitwise_or, notin_bitwise_or, in_bitwise_or, isnot_bitwise_or, is_bitwise_or, bitwise_or, bitwise_xor, bitwise_and, shift_expr, 
+			 if_stmt, elif_stmt, while_stmt, for_stmt, else_block, block, return_stmt, set,
+			 arguments, args, args_or, starredexpr_or_assignmentexpr_or_expr, args_or_par, assignmentexpr_or_expr,
+			 kwargs, kwarg_or_starred, kwarg_or_starreds, kwarg_or_double_starred, dict, double_starred_kvpairs, double_starred_kvpair, kvpair,
+			 sum, term, factor, power, await_primary, primary, atom, target_with_star_atom, star_atom, list, tuple, star_named_expressions, star_named_expression;
+
+
+
+precedence left RETURN_STMT;
+precedence left RSQB, RPAR;
+
+
+precedence left NOT;
+precedence left NL, INTEGER;
+precedence left NL, FLOAT;
+precedence left NL, BOOL;
+precedence left NL, STRING;
+precedence left NL, ID;
+precedence left LSQB, LPAR;
+
+precedence left DEGREE, FLOATDIVISION;
+precedence left COMMA, MULTIPLICATION;
+precedence left SEMICOLON, ID;
+precedence left ADDITION;
+precedence left SUBSTRACTION;
+
+
+
+
+
+precedence left MULTIPLICATION;
+precedence left SEMICOLON;
+precedence left IF_STMT;
+precedence left LPAR;
+
+
+
+
+
+
+start with file;
+
+file ::= statements:e {: System.out.println("PARSER: file ::= statements on line " + (eleft + 1) + ", column " + (eright + 1)); 
+						
+						int prevKey = 1;
+						AST ptr = root;
+						HashMap<Integer, AST> table = new HashMap<Integer, AST>();
+					
+						for (int key : stmts.keySet()) {
+							int secondKey = stmts.get(key).keySet().iterator().next();
+							Statement stmt = stmts.get(key).get(secondKey);
+							AST ast = new AST(stmt.getClass().getSimpleName(), stmt.getLoc().line, stmt.getLoc().column, stmt, ptr);
+							
+							if (secondKey == prevKey) {
+								table.put(secondKey, ptr);
+							}				
+						    else if (secondKey > prevKey) {
+								ptr = ptr.getChild(ptr.getChilds().size() - 1);
+								table.put(secondKey, ptr);
+							} else {
+								ptr = table.get(secondKey);
+							}
+
+							ptr.addChild(ast);
+							ast.setParent(ptr);
+							prevKey = secondKey;
+						
+						}
+
+						
+						DFS(root);
+						
+						FileWriter jsonFile = new FileWriter("AST_RESULT.json");
+						jsonFile.write("[\n");
+						for (int i = 0; i < jsonArray.size(); ++i) {
+							JSONObject jsonObj = (JSONObject)jsonArray.get(i);
+							if (i < jsonArray.size() - 1)
+								jsonFile.write("\t" + jsonObj.toJSONString() + ",\n");
+						}
+						jsonFile.write("\t" + ((JSONObject)jsonArray.get(jsonArray.size() - 1)).toJSONString() + "\n]");
+						jsonFile.close();
+						
+						
+					  :}
+	   ;
+
+statements ::= statement:e statements {: 
+					System.out.println("PARSER: statments ::= statement statements on line " + (eleft + 1) + ", column " + (eright + 1)); 
+					RESULT = e;	
+					
+				:}
+			 | statement:e {: 
+			 		System.out.println("PARSER: statements ::= statement on line " + (eleft + 1) + ", column " + (eright + 1)); 
+					RESULT = e;
+					
+			  :}
+			 ;
+
+statement ::= compound_stmt:e {: 
+				System.out.println("PARSER: statement ::= compound_stmt on line " + (eleft + 1) + ", column " + (eright + 1)); 
+			  	RESULT = e;
+				
+				
+			  :}
+			| simple_stmts:e {: 
+				System.out.println("PARSER: statement ::= simple_stmts on line " + (eleft + 1) + ", column " + (eright + 1)); 
+				RESULT = e;
+				
+			  :}
+			;
+
+
+
+simple_stmts ::= simple_stmt:e NL simple_stmts  {: 
+					System.out.println("PARSER: simple_stmts ::= simple_stmt NL simple_stmt on line " + (eleft + 1) + ", column " + (eright + 1));
+					Statement stmt = (Statement)e;
+					if (!stmts.containsKey(stmt.getLoc().line))
+						stmts.put(stmt.getLoc().line, new HashMap<Integer, Statement>());
+					stmts.get(stmt.getLoc().line).put(stmt.getLoc().column, (Statement)e);
+
+					
+				:}
+			   | simple_stmt:e SEMICOLON simple_stmts {: 
+			   		System.out.println("PARSER: simple_stmts ::= simple_stmt SEMICOLON simple_stmts on line " + (eleft + 1) + ", column " + (eright + 1)); 
+			   		Statement stmt = (Statement)e;
+					if (!stmts.containsKey(stmt.getLoc().line))
+						stmts.put(stmt.getLoc().line, new HashMap<Integer, Statement>());
+					stmts.get(stmt.getLoc().line).put(stmt.getLoc().column, (Statement)e);
+				:}
+			   | simple_stmt:e NL {: 
+			   		System.out.println("PARSER: simple_stmts ::= simple_stmt NL on line " + (eleft + 1) + ", column " + (eright + 1));
+			   		Statement stmt = (Statement)e;
+					if (!stmts.containsKey(stmt.getLoc().line))
+						stmts.put(stmt.getLoc().line, new HashMap<Integer, Statement>());
+					stmts.get(stmt.getLoc().line).put(stmt.getLoc().column, (Statement)e);
+					
+				:}
+			   | simple_stmt:e SEMICOLON {: System.out.println("PARSER: simple_stmts ::= simple_stmt SEMICOLON on line " + (eleft + 1) + ", column " + (eright + 1)); 
+			   								Statement stmt = (Statement)e;
+											if (!stmts.containsKey(stmt.getLoc().line))
+												stmts.put(stmt.getLoc().line, new HashMap<Integer, Statement>());
+											stmts.get(stmt.getLoc().line).put(stmt.getLoc().column, (Statement)e);
+										 	
+										:}
+			   | simple_stmt:e {: 
+			   			System.out.println("PARSER: simple_stmts ::= simple_stmt on line " + (eleft + 1) + ", column " + (eright + 1)); 
+			   			Statement stmt = (Statement)e;
+						if (!stmts.containsKey(stmt.getLoc().line))
+							stmts.put(stmt.getLoc().line, new HashMap<Integer, Statement>());
+						stmts.get(stmt.getLoc().line).put(stmt.getLoc().column, (Statement)e);
+							   :}
+			   ;
+
+compound_stmt ::= if_stmt:e {: 
+					System.out.println("PARSER: compound_sttm ::= if_stmt on line " + (eleft + 1) + ", column " + (eright + 1)); 
+					
+				:}
+				| while_stmt
+				| for_stmt:e {: System.out.println("PARSER: compound_sttm ::= if_stmt on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+				| class_def
+				| function_def:e {: System.out.println("PARSER: compound_sttm ::= function_def on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+				;
+
+
+simple_stmt ::= assign_stmt:e  {: 
+					System.out.println("PARSER: simple_stmt ::= assign_stmt on line " + (eleft + 1) + ", column " + (eright + 1)); 
+					RESULT = e;
+				:}
+			  | star_expression:e {: System.out.println("PARSER: simple_stmt ::= star_expression on line " + (eleft + 1) + ", column " + (eright +1)); :}
+			  | return_stmt  {: System.out.println("PARSER: simple_stmt ::= return_stmt"); :}
+			  ;
+
+
+ 
+assign_stmt ::= ID:e1 ASSIGNMENT:e2 star_expressions:e3 {: 
+					System.out.println("PARSER: assign_stmt ::= ID ASSIGNMENT star_expressions " + " on line " + (e1left + 1) + ", column " + (e1right + 1)); 
+					
+					
+					if (!symbolTable.containsKey((String)e1) )
+						symbolTable.put((String)e1, ((Expression)e3).getType());
+					
+					
+					
+
+					
+					RESULT =  new Assignment(e1left + 1, e1right + 1, new Label(e1left + 1, e1right + 1, (String)e1, symbolTable.get((String)e1)), (Expression)e3);
+					
+				 :}
+			   | ID:e1 annotation ASSIGNMENT:e2 star_expression:e3 {:
+			   		Type type;
+					if ("int".equals((String)e2))
+						type = Type.INT;
+					else if ("float".equals((String)e2))
+						type = Type.FLOAT;
+					else if ("bool".equals((String)e2))
+						type = Type.BOOL;
+					else if ("str".equals((String)e2))
+						type = Type.STRING;
+					else if ("list".equals((String)e2))
+						type = Type.LIST;
+					else if ("tuple".equals((String)e2))
+						type = Type.TUPLE;
+					else if ("set".equals((String)e2))
+						type = Type.SET;
+					else 
+						type = Type.DICT;
+			   		if (!symbolTable.containsKey((String)e1) )
+						symbolTable.put((String)e1, type);
+				
+					
+					RESULT =  new Assignment(e1left + 1, e1right + 1, new Label(e1left + 1, e1right + 1, (String)e1, symbolTable.get((String)e1)), (Expression)e3);
+			   :}
+			   | star_targets:e1 ASSIGNMENT star_expressions:e3 {:
+			   
+			    :}
+			   | star_targets ASSIGNMENT assign_stmt star_expressions
+			   ;
+			   
+return_stmt ::= RETURN_STMT star_expressions {: System.out.println("PARSER: return_stmt ::= RETURN_STMT star_expressions"); :}
+			  | RETURN_STMT {: System.out.println("PARSER: return_stmt ::= RETURN_STMT"); :}
+			  ; 
+
+
+
+star_expressions ::= star_expression:e COMMA star_expressions {: System.out.println("PARSER: star_expressions ::= star_expression COMMA star_expressions on line " + (eleft + 1) + ", column " + (eright + 1)); 
+																 RESULT = e; :}
+				   | star_expression:e COMMA {: System.out.println("PARSER: star_expressions ::= star_expression COMMA on line " + (eleft + 1) + ", column " + (eright + 1)); 
+				   								 RESULT = e; :}
+				   | star_expression:e {: System.out.println("PARSER: star_expressions ::= star_expression on line " + (eleft + 1) + ", column " + (eright + 1)); 
+				   	 					   RESULT = e; :}
+				   ;
+
+star_expression ::= MULTIPLICATION bitwise_or {: System.out.println("PARSER: star_expression ::= MULTIPLICATION bitwise_or"); :}
+				  | expression:e	{: System.out.println("PARSER: star_expression ::= expression on line " + (eleft + 1) + ", column " + (eright + 1)); 
+				  					   RESULT = e; :}
+				  ;
+
+
+starred_expression ::= MULTIPLICATION:e expression:e2 {: System.out.println("PARSER: starred_expression ::= MULTIPLICATION expression on line " + (eleft + 1) + ", column " + (eright + 1)); 
+														  :}
+					 ;
+
+			 
+
+
+assignment_expression ::= ID WALRUS_ASSIGNMENT expression;
+						
+
+star_named_expressions ::= star_named_expression:e COMMA star_named_expressions {: star_exprs.add((Expression)e); :}
+						 | star_named_expression:e COMMA	{: star_exprs.add((Expression)e); :}
+						 | star_named_expression:e {: star_exprs.add((Expression)e); :}
+						 ;
+
+star_named_expression ::= MULTIPLICATION bitwise_or
+						| named_expression:e {: RESULT = e; :}
+						;
+
+named_expression ::= assignment_expression
+				   | expression:e {: RESULT = e; :};
+
+expression ::= disjunction:e  {: 
+					System.out.println("PARSER: expression ::= disjunction on line " + (eleft + 1) + ", column " + (eright + 1)); 
+					RESULT = e; 
+				:}
+			 | lambdef
+			 ;
+
+					
+					
+
+disjunction ::= conjunction:e1 OR disjunction:e2 {:
+					System.out.println("PARSER: disjunction ::= conjunction OR disjunction on line " + (e1left + 1) + ", column " + (e1right + 1));
+					RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.OR);
+					
+			  :}
+			  | conjunction:e {: 
+			  		System.out.println("PARSER: disjunction ::= conjunction on line " + (eleft + 1) + ", column " + (eright + 1));
+					RESULT = e; 
+				:} 
+			  ;
+
+conjunction ::= inversion:e1 AND conjunction:e2 {:
+					System.out.println("PARSER: conjunction ::= inversion AND conjunction on line " + (e1left + 1) + ", column " + (e1right + 1));
+					RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.AND);
+					BinaryExpression b = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.AND);
+					System.out.println(b.getType());
+					
+			  :}  
+			  | inversion:e {:  System.out.println("PARSER: conjunction ::= inversion on line " + (eleft + 1) + ", column " + (eright + 1));
+			  					RESULT = e; :}
+			  ;
+
+inversion ::= NOT:e1 inversion:e2 {: 
+				RESULT = new UnaryExpression(e1left + 1, e1right + 1, (Expression)e2, UnaryOperator.NOT); 
+				UnaryExpression b = new UnaryExpression(e1left + 1, e1right + 1, (Expression)e2, UnaryOperator.NOT); 
+				
+				
+			  :}
+ 			| comparison:e {: RESULT = e; :}
+			;
+
+
+comparison ::= bitwise_or:e compare_op_bitwirs_or_pairs {: System.out.println("PARSER: comparison ::= bitwise_or compare_op_bitwise_or_pairs on line " + (eleft + 1) + ", column " + (eright + 1)); 
+														   RESULT = e; :}
+			 | bitwise_or:e {: System.out.println("PARSER: comparison ::= bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+			 				   RESULT = e; :}
+			 ;
+
+compare_op_bitwirs_or_pairs ::= compare_op_bitwirs_or_pair:e compare_op_bitwirs_or_pairs {: RESULT = e; :}
+							  | compare_op_bitwirs_or_pair:e  {: RESULT = e; :}
+							  ;
+
+compare_op_bitwirs_or_pair ::= eq_bitwise_or:e {: 
+								System.out.println("PARSER: compare_op_bitwise_or_pair ::= eq_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;
+							:}
+							 | noteq_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= neq_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;	
+							:}
+							 | lte_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= lte_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;	
+							:}
+							 | lt_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= lt_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;
+							:}
+							 | gte_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= gte_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e; 
+							:}
+							 | gt_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= gt_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;	
+							:}
+							 | notin_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= notin_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;
+							:}
+							 | in_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= in_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;
+							:}
+							 | isnot_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= isnot_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;
+							:}
+							 | is_bitwise_or:e {: 
+							 	System.out.println("PARSER: compare_op_bitwise_or_pair ::= is_bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); 
+								RESULT = e;	
+							:}
+							 ;
+						
+eq_bitwise_or ::= EQ bitwise_or:e {: RESULT = e; :}
+				;
+
+noteq_bitwise_or ::= NE bitwise_or:e {: RESULT = e; :}
+				   ;
+
+lte_bitwise_or ::= LE bitwise_or:e {: RESULT = e; :}
+				 ;
+
+lt_bitwise_or ::= LT bitwise_or:e {: RESULT = e; :}
+				;
+
+gte_bitwise_or ::= GE bitwise_or:e {: RESULT = e; :}
+				 ;
+
+gt_bitwise_or ::= GT bitwise_or:e {: RESULT = e; :}
+				;
+
+notin_bitwise_or ::= NOT IN bitwise_or:e {: RESULT = e; :}
+				   ;
+
+in_bitwise_or ::= IN bitwise_or:e {: RESULT = e; :}
+				;
+
+isnot_bitwise_or ::= IS NOT bitwise_or:e {: RESULT = e; :}
+				   ;
+
+is_bitwise_or ::= IS bitwise_or:e {: RESULT = e; :}
+				;
+
+
+if_stmt ::= IF_STMT:e1 named_expression:e2 COLON block:e3 elif_stmt {: 
+				System.out.println("PARSER: find if elif rule"); 
+				Range range = new Range(new Location(e1left + 1, e1right + 1), new Location(((Location)e3).line, ((Location)e3).column));
+				IfStatement ifstmt = new IfStatement(e1left + 1, e1right + 1, (Expression)e2, range);
+				if (!stmts.containsKey(e1left + 1))
+						stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+				stmts.get(e1left + 1).put(e1right + 1, (Statement)ifstmt);
+				
+			:}
+		  | IF_STMT:e1 named_expression:e2 COLON block:e3 else_block {: 
+		  		System.out.println("PARSER: find if else rule"); 
+				Range range = new Range(new Location(e1left + 1, e1right + 1), new Location(((Location)e3).line, ((Location)e3).column));
+				IfStatement ifstmt = new IfStatement(e1left + 1, e1right + 1, (Expression)e2, range);
+				if (!stmts.containsKey(e1left + 1))
+						stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+				stmts.get(e1left + 1).put(e1right + 1, (Statement)ifstmt);
+			:}
+		  | IF_STMT:e1 named_expression:e2 COLON block:e3 {: 
+		  		System.out.println("PARSER: find if rule on line " + (e1left + 1) + ", column " + (e1right + 1)); 
+				Range range = new Range(new Location(e1left + 1, e1right + 1), new Location(((Location)e3).line, ((Location)e3).column));
+				IfStatement ifstmt = new IfStatement(e1left + 1, e1right + 1, (Expression)e2, range);	
+				if (!stmts.containsKey(e1left + 1))
+						stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+				stmts.get(e1left + 1).put(e1right + 1, (Statement)ifstmt);		
+			:}
+		  ;
+
+elif_stmt ::= ELIF_STMT:e1 named_expression:e2 COLON block:e3 elif_stmt {:
+				System.out.println("PARSER: find elif elif rule"); 
+				Range range = new Range(new Location(e1left + 1, e1right + 1), new Location(((Location)e3).line, ((Location)e3).column));
+		  		ElifStatement elifstmt = new ElifStatement(e1left + 1, e1right + 1, (Expression)e2, range);
+				if (!stmts.containsKey(e1left + 1))
+						stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+				stmts.get(e1left + 1).put(e1right + 1, (Statement)elifstmt);
+				
+			 :}
+		  | ELIF_STMT:e1 named_expression:e2 COLON block:e3 else_block {:
+		  		System.out.println("PARSER: find elif else rule"); 
+				Range range = new Range(new Location(e1left + 1, e1right + 1), new Location(((Location)e3).line, ((Location)e3).column));
+		  		ElifStatement elifstmt = new ElifStatement(e1left + 1, e1right + 1, (Expression)e2, range);
+				if (!stmts.containsKey(e1left + 1))
+						stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+				stmts.get(e1left + 1).put(e1right + 1, (Statement)elifstmt);
+				
+			:}
+		  | ELIF_STMT:e1 named_expression:e2 COLON block:e3 {:
+		 	    System.out.println("PARSER: find elif rule"); 
+				Range range = new Range(new Location(e1left + 1, e1right + 1), new Location((int)e3, (int)e3));
+		  		ElifStatement elifstmt = new ElifStatement(e1left + 1, e1right + 1, (Expression)e2, range);
+				if (!stmts.containsKey(e1left + 1))
+						stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+				stmts.get(e1left + 1).put(e1right + 1, (Statement)elifstmt);
+		  	:}
+		  ;
+
+else_block ::= ELSE_STMT:e1 COLON block:e2 {:
+					System.out.println("PARSER: find else rule"); 
+					Range range = new Range(new Location(e1left + 1, e1right + 1), new Location(((Location)e2).line, ((Location)e2).column));
+					ElseStatement elsestmt = new ElseStatement(e1left + 1, e1right + 1, range);
+					if (!stmts.containsKey(e1left + 1))
+						stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+					stmts.get(e1left + 1).put(e1right + 1, (Statement)elsestmt);
+			  :}
+			 ;
+
+
+
+
+block ::= INDENT:e statements:e2 DEDENT:e3 {: 
+			System.out.println("PARSER: block ::= NL INDENT statements DEDENT on line " + (eleft + 1) + ", column " + (eright + 1)); 
+			RESULT = new Location(e3left + 1, e3right + 1);
+		  :}
+		| simple_stmts:e {: 
+			System.out.println("PARSER: block ::= simple_stmts"); 
+			RESULT = e;
+		:}
+		;
+		
+
+while_stmt ::= WHILE_STMT:e1 named_expression:e2 COLON block:e3 else_block {: 
+							System.out.println("PARSER: while_stmt ::= WHILE_STMT named_expression COLON block else_block on line " + (e1left + 1) + ", column " + (e1right + 1)); 
+							Range range = new Range(new Location(e1left + 1, e1right + 1), new Location(((Location)e3).line, ((Location)e3).column));
+							WhileLoop whileLoop = new WhileLoop(e1left + 1, e1right + 1, (Expression)e2, range);
+							if (!stmts.containsKey(e1left + 1))
+								stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+							stmts.get(e1left + 1).put(e1right + 1, (Statement)whileLoop);
+						:}
+			 | WHILE_STMT:e1 named_expression:e2 COLON block:e3  {: 
+			 		System.out.println("PARSER: while_stmt ::= WHILE_STMT named_expression COLON block on line " + (e1left + 1) + ", column " + (e1right +1 )); 
+					Range range = new Range(new Location(e1left + 1, e1right + 1), new Location(((Location)e3).line, ((Location)e3).column));
+					WhileLoop whileLoop = new WhileLoop(e1left + 1, e1right + 1, (Expression)e2, range);
+					if (!stmts.containsKey(e1left + 1))
+						stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+					stmts.get(e1left + 1).put(e1right + 1, (Statement)whileLoop);
+				:}
+			 ;
+
+for_stmt ::= FOR_STMT:e star_targets IN star_expressions COLON block else_block {: System.out.println("PARSER: for_stmt ::= FOR_STMT star_targets IN star_expressions COLON block else_block on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+		   | FOR_STMT:e star_targets IN star_expressions COLON block {: System.out.println("PARSER: for_stmt ::= FOR_STMT star_targets IN star_expressions COLON block on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+		   ;
+
+
+
+star_targets ::= star_target:e COMMA star_targets {: System.out.println("PARSER: star_targets ::= star_target COMMA star_targets on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+			   | star_target:e {: System.out.println("PARSER: star_targets ::= star_target on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+			   | star_target:e COMMA {: System.out.println("PARSER: star_targets ::= star_target COMMA on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+			   ;
+
+star_target ::= MULTIPLICATION:e star_target {: System.out.println("PARSER: star_target ::= MULTIPLICATION star_target on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+			  | target_with_star_atom:e {: System.out.println("PARSER: star_target ::= target_with_star_atom on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+			  ;
+
+star_targets_list_seq ::= star_target 
+						| star_target COMMA
+						| star_target star_targets_list_seq_plus
+						| star_target star_targets_list_seq_plus COMMA;
+
+star_targets_list_seq_plus ::= COMMA star_target star_targets_list_seq_plus
+								| COMMA star_target;
+
+star_targets_tuple_seq ::= star_target star_targets_list_seq_plus
+						| star_target star_targets_list_seq_plus COMMA
+						| star_target COMMA;
+
+// TODO: finish the target_with_star_atom rule
+
+target_with_star_atom ::= star_atom:e {: System.out.println("PARSER: target_with_star_atom ::= star_atom on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+						| t_primary DOT ID
+						| t_primary LSQB slices RSQB;
+
+// atom:e {: System.out.println("PARSER: star_atom ::= ID on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+star_atom ::= LPAR target_with_star_atom RPAR
+			| LPAR star_targets_tuple_seq RPAR
+			| LSQB star_targets_list_seq RSQB
+		    ;
+//| atom;
+t_primary ::= t_primary DOT ID
+		| t_primary LSQB slices RSQB
+		| t_primary LPAR RPAR
+		| t_primary LPAR arguments RPAR
+		;
+
+//slices
+
+slices ::= slice:e {: 
+			System.out.println("PARSER: slices ::= slice on line " + (eleft + 1) + ", column " + (eright + 1));
+		:}
+		;
+
+slice ::= COLON
+		| COLON COLON
+		| COLON COLON expression
+		| COLON expression
+		| COLON expression COLON
+		| COLON expression COLON expression
+		| expression COLON
+		| expression COLON COLON
+		| expression COLON COLON expression
+		| expression COLON expression
+		| expression COLON expression COLON
+		| expression COLON expression COLON expression
+		| named_expression;
+
+
+// class definition
+decorators ::= AT named_expression
+			| AT named_expression decorators;
+
+class_def ::= decorators class_def_raw
+			| class_def_raw;
+
+class_def_raw ::= CLASS_STMT ID COLON block
+				| CLASS_STMT ID LPAR arguments RPAR COLON block
+				| CLASS_STMT ID LPAR RPAR COLON block;
+
+// function definition
+
+function_def ::= decorators function_def_raw
+			| function_def_raw;
+
+function_def_raw ::= FUN_STMT ID LPAR RPAR COLON block
+					| FUN_STMT:e1 ID LPAR params RPAR COLON block {:
+						Function func = new Function(e1left + 1, e1right + 1, Type.NONE, funcParams);
+						if (!stmts.containsKey(e1left + 1))
+							stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+						stmts.get(e1left + 1).put(e1right + 1, (Statement)func);
+						funcParams.clear();	
+					:}
+					| FUN_STMT:e1 ID LPAR RPAR ARROW_RIGHT ID:e2 COLON block {:
+						Function func;
+						if ("int".equals((String)e2))
+							func = new Function(e1left + 1, e1right + 1, Type.INT, funcParams);
+						else if ("float".equals((String)e2))
+							func = new Function(e1left + 1, e1right + 1, Type.FLOAT, funcParams);
+						else if ("bool".equals((String)e2))
+							func = new Function(e1left + 1, e1right + 1, Type.BOOL, funcParams);
+						else if ("str".equals((String)e2))
+							func = new Function(e1left + 1, e1right + 1, Type.STRING, funcParams);
+						else if ("list".equals((String)e2))
+							func = new Function(e1left + 1, e1right + 1, Type.LIST, funcParams);	
+						else if ("tuple".equals((String)e2))
+							func = new Function(e1left + 1, e1right + 1, Type.TUPLE, funcParams);
+						else if ("set".equals((String)e2))
+							func = new Function(e1left + 1, e1right + 1, Type.SET, funcParams);
+						else 
+							func = new Function(e1left + 1, e1right + 1, Type.DICT, funcParams);
+						if (!stmts.containsKey(e1left + 1))
+							stmts.put(e1left + 1, new HashMap<Integer, Statement>());
+						stmts.get(e1left + 1).put(e1right + 1, (Statement)func);
+						funcParams.clear();
+					:}
+					| FUN_STMT ID LPAR params RPAR ARROW_RIGHT ID COLON block
+					| ASYNC FUN_STMT ID LPAR RPAR COLON block
+					| ASYNC FUN_STMT ID LPAR params RPAR COLON block
+					| ASYNC FUN_STMT ID LPAR RPAR ARROW_RIGHT ID COLON block
+					| ASYNC FUN_STMT ID LPAR params RPAR ARROW_RIGHT ID COLON block;
+
+//function parameters
+// !IMPORTANT HERE BUG WITH PARAMETERS
+
+params ::= parameters:e {: System.out.println("PARSER: paramss ::= parameters on line " + (eleft + 1) + ", column " + (eright + 1));
+						 :};
+
+parameters ::= star_etc
+	| slash_no_default
+	| slash_no_default param_no_default_plus
+	| slash_no_default param_with_default_plus
+	| slash_no_default star_etc
+	| slash_no_default param_no_default_plus star_etc
+	| slash_no_default param_with_default_plus star_etc
+	| slash_no_default param_no_default_plus param_with_default_plus
+	| slash_no_default param_no_default_plus param_with_default_plus star_etc
+    | slash_with_default
+	| slash_with_default param_with_default_plus
+	| slash_with_default star_etc
+	| slash_with_default param_with_default_plus star_etc 
+	| param_no_default_plus
+	| param_no_default_plus param_with_default_plus
+	| param_no_default_plus star_etc
+	| param_no_default_plus param_with_default_plus star_etc
+    | param_with_default_plus
+	| param_with_default_plus star_etc;
+
+param_no_default_plus::= param_no_default param_no_default_plus
+						| param_no_default;
+param_with_default_plus::= param_with_default param_with_default_plus
+						| param_with_default;
+
+param_maybe_default::= param_no_default COMMA param_maybe_default
+					| param_with_default COMMA param_maybe_default
+					| param_no_default
+					| param_with_default;
+
+slash_no_default ::= param_no_default_plus FLOATDIVISION COMMA
+					| param_no_default_plus FLOATDIVISION;
+
+slash_with_default ::= param_with_default_plus FLOATDIVISION COMMA
+					| param_with_default_plus FLOATDIVISION
+					| param_no_default_plus param_with_default_plus FLOATDIVISION COMMA
+					| param_no_default_plus param_with_default_plus FLOATDIVISION
+					;
+
+
+star_etc ::= MULTIPLICATION param_no_default
+			| MULTIPLICATION param_no_default kwds
+			| MULTIPLICATION param_no_default param_maybe_default
+			| MULTIPLICATION param_no_default param_maybe_default kwds
+			| MULTIPLICATION COMMA param_maybe_default
+			| MULTIPLICATION COMMA param_maybe_default kwds
+			| kwds;
+
+
+kwds::= DEGREE param_no_default;
+
+param_no_default::= param COMMA
+					| param;
+
+param_with_default::= param default COMMA
+					| param default;
+
+param::= ID
+		| ID:e1 annotation:e2 {:
+			symbolTable.put((String)e1, (Type)e2);
+		:}
+		;
+
+annotation::= COLON:e1 ID:e2 {: System.out.println("PARSER: annotation ::= annotation starts on line " + (e1left + 1) + ", column " + (e1right + 1)); 
+							if ("int".equals((String)e2))
+								funcParams.add(Type.INT);
+							else if ("float".equals((String)e2))
+								funcParams.add(Type.FLOAT);
+							else if ("bool".equals((String)e2))
+								funcParams.add(Type.BOOL);
+							else if ("str".equals((String)e2))
+								funcParams.add(Type.STRING);
+							else if ("list".equals((String)e2))
+								funcParams.add(Type.LIST);
+							else if ("tuple".equals((String)e2))
+								funcParams.add(Type.TUPLE);
+							else if ("set".equals((String)e2))
+								funcParams.add(Type.SET);
+							else if ("dict".equals((String)e2))
+								funcParams.add(Type.DICT);
+							RESULT = funcParams.get(funcParams.size() - 1);
+						 :};
+
+default ::= ASSIGNMENT expression;
+
+/*bitwise operators*/
+bitwise_or ::= bitwise_or:e1 BIT_OR bitwise_xor:e2 {:  RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.BIT_OR); :}
+			 | bitwise_xor:e {: RESULT = e; :}
+			 ;
+
+bitwise_xor ::= bitwise_xor:e1 BIT_XOR bitwise_and:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.BIT_XOR); 
+														 
+														:}
+			  | bitwise_and:e {: RESULT = e; :}
+			  ;
+
+bitwise_and ::= bitwise_and:e1 BIT_AND shift_expr:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.BIT_AND); :}
+			  | shift_expr:e	{: RESULT = e; :}
+			  ;
+		
+shift_expr ::= shift_expr:e1 LEFT_SHIFT sum:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.LEFT_SHIFT); 
+												  
+												:}	
+			 | shift_expr:e1 RIGHT_SHIFT sum:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right, (Expression)e1, (Expression)e2, BinaryOperator.RIGHT_SHIFT); 
+			 									   
+			 									:}
+ 			 | sum:e {: RESULT = e; :}
+			 ;
+
+
+/*arithmetic operators*/
+sum ::= sum:e1 ADDITION term:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.PLUS); 
+								   
+								 :}
+	  | sum:e1 SUBSTRACTION term:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.MINUS); 
+	  								   
+									   
+	  							   :}
+	  | term:e {: RESULT = e; :}
+	  ;
+
+term ::= term:e1 MULTIPLICATION factor:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.MULTIPLICATION); 
+											
+										  :}
+	   | term:e1 FLOATDIVISION factor:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.FLOATDIVISION); 
+	   									    
+	   									:}
+	   | term:e1 INTDIVISION factor:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.INTDIVISION); 
+	   									
+	   									:}
+	   | term:e1 MODULO factor:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.MODULO); 
+	   								
+	   							  :}
+	   | factor:e {: RESULT = e; :}
+	   ;
+
+factor ::= ADDITION factor:e {: RESULT = new UnaryExpression(eleft + 1, eright + 1, (Expression)e, UnaryOperator.PLUS); 
+								
+							  :}
+		 | SUBSTRACTION factor:e {: RESULT = new UnaryExpression(eleft + 1, eright + 1, (Expression)e, UnaryOperator.MINUS);  
+		 							
+		 						 :}
+		 | BIT_NOT factor:e {: RESULT = new UnaryExpression(eleft + 1, eright + 1, (Expression)e, UnaryOperator.BIT_NOT); 
+		 						
+		 					:}
+		 | power:e {: RESULT = e; :}
+		 ;
+
+power ::= await_primary:e1 DEGREE factor:e2 {: RESULT = new BinaryExpression(e1left + 1, e1right + 1, (Expression)e1, (Expression)e2, BinaryOperator.POWER); 
+											  
+											:}
+		| await_primary:e {: RESULT = e; :}
+		;
+
+await_primary ::= AWAIT primary:e {: RESULT = e; :}
+				| primary:e {: RESULT = e; :}
+				;
+
+
+primary ::= primary LPAR arguments RPAR 
+		  | primary LPAR RPAR
+		  | primary LSQB slices RSQB
+		  | primary LSQB RSQB
+		  | primary DOT ID
+		  | atom:e {: RESULT = e; :}
+		  ;
+
+
+//arguments
+arguments ::= args COMMA 
+			| args;
+
+args ::= args_or 
+		| kwargs;
+
+args_or ::= starredexpr_or_assignmentexpr_or_expr
+ 			| starredexpr_or_assignmentexpr_or_expr COMMA kwargs
+ 			| starredexpr_or_assignmentexpr_or_expr args_or_par
+			| starredexpr_or_assignmentexpr_or_expr args_or_par COMMA kwargs;
+
+args_or_par ::= COMMA starredexpr_or_assignmentexpr_or_expr
+				| COMMA starredexpr_or_assignmentexpr_or_expr args_or_par;
+
+starredexpr_or_assignmentexpr_or_expr ::= starred_expression
+										| assignmentexpr_or_expr;
+
+assignmentexpr_or_expr ::= assignment_expression
+							| expression;
+
+kwargs ::= kwarg_or_starred kwarg_or_starreds COMMA kwarg_or_starred kwarg_or_starreds
+		| kwarg_or_starred kwarg_or_starreds;
+
+kwarg_or_starreds ::= COMMA kwarg_or_starred
+					| COMMA kwarg_or_starred kwarg_or_starreds;
+
+//here I removed starred_expression and added starred with double starred in one
+kwarg_or_starred ::= ID ASSIGNMENT expression
+					| DEGREE expression;
+
+
+
+
+
+
+list ::= LSQB:e1 star_named_expressions RSQB {: 
+				System.out.println("PARSER: list ::= [star_named_expressions] on line " + (e1left + 1) + ", column " + (e1right + 1));
+				RESULT = new ListLiteral(e1left + 1, e1right + 1, star_exprs);
+				Collections.reverse(star_exprs);
+				ListLiteral ex = new ListLiteral(e1left + 1, e1right + 1, star_exprs);
+				star_exprs.clear();
+				System.out.println(ex.types);
+				
+			:}
+	   | LSQB RSQB
+	   ;
+
+tuple ::= LPAR star_named_expression COMMA star_named_expressions RPAR
+		| LPAR star_named_expression COMMA RPAR
+		| LPAR RPAR
+		;
+	
+dict ::= LBRACE:e double_starred_kvpairs RBRACE {: System.out.println("PARSER: dict ::= LBRACE double_starred_kvpairs RBRACE on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+	   | LBRACE:e RBRACE {: System.out.println("PARSER: dict ::= LBRACE RBRACE on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+	   ;
+
+set ::= LBRACE star_named_expressions RBRACE
+	  ;
+	
+double_starred_kvpairs ::= double_starred_kvpair:e COMMA double_starred_kvpairs {: System.out.println("PARSER: double_starred_kvpairs ::= double_starred_kvpair COMMA double_starred_kvpairs on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+						 | double_starred_kvpair:e COMMA {: System.out.println("PARSER: double_starred_kvpairs ::= double_starred_kvpair COMMA on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+						 | double_starred_kvpair:e {: System.out.println("PARSER: double_starred_kvpairs ::= double_starred_kvpair on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+						 ;
+						
+double_starred_kvpair ::= DEGREE:e bitwise_or {: System.out.println("PARSER: double_starred_kvpair ::= DEGREE bitwise_or on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+						| kvpair:e {: System.out.println("PARSER: double_starred_kvpair ::= kvpair on line " + (eleft + 1) + ", column " + (eright + 1)); :}
+						;
+
+kvpair ::= expression:e COLON expression {: System.out.println("PARSER: kvpair ::= expression COLON expression on line " + (eleft + 1) + ", column " + (eright + 1) + " with value " + e); :}
+		 ;
+
+atom ::= INTEGER:e {: RESULT = new IntegerLiteral((int)e, eleft + 1, eright + 1);:} 
+	   | FLOAT:e {: RESULT = new FloatLiteral((float)e, eleft + 1, eright + 1); :}
+	   | BOOL:e {: RESULT = new BooleanLiteral((boolean)e, eleft + 1, eright + 1); :}
+	   | STRING:e {: RESULT = new StringLiteral((String)e, eleft + 1, eright + 1); :}
+	   | ID:e	 	{:  
+						if (!symbolTable.containsKey((String)e))
+							symbolTable.put((String)e, Type.NOTDEFINED);
+						RESULT = new Label(eleft + 1, eright + 1, (String)e, symbolTable.get((String)e));
+	   				:}
+	   | list:e {: System.out.println("PARSER: atom ::= list on line " + (eleft + 1) + ", column " + (eright + 1)); 
+				   RESULT = e; :}
+	   | tuple:e {: System.out.println("PARSER: atom ::= tuple on line " + (eleft + 1) + ", column " + (eright + 1)); 
+	   			    RESULT = new TupleLiteral(eleft + 1, eright + 1); :}
+	   | dict:e {: System.out.println("PARSER: atom ::= dict on line " + (eleft + 1) + ", column " + (eright + 1)); 
+	   			   RESULT = new DictLiteral(eleft + 1, eright + 1); :}
+	   | set:e {: System.out.println("PARSER: atom ::= set on line " + (eleft + 1) + ", column " + (eright + 1)); 
+	   			  RESULT = new SetLiteral(eleft + 1, eright + 1);
+				:}
+	   ; 
+
+// star_atom 
+

@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+
+<project name="Python-Static-TypeChecker" default="run">
+    <!-- define additional tasks -->
+    <taskdef classname="jflex.anttask.JFlexTask" name="jflex"/>
+
+    <!-- define directory names -->
+    <property name="src.dir"        value="src"                 />
+    <property name="lib.dir"        value="lib"                 />
+    <property name="ast.dir"        value="${src.dir}/ast"      />
+    <property name="java.dir"       value="${src.dir}/java"     />
+    <property name="lexer.dir"      value="${src.dir}/lexer"    />
+    <property name="parser.dir"     value="${src.dir}/parser"   />
+    <property name="test.dir"       value="test"                />
+    <property name="bin.dir"        value="bin"                 />
+    <property name="classes.dir"    value="${bin.dir}/classes"  />
+
+    
+
+
+    <!-- define all targets -->
+    <target name="lexer">
+        <jflex file="${lexer.dir}/lexer.jflex" destdir="${java.dir}"/>
+    </target>
+
+    <target name="parser">
+        <java jar="${lib.dir}/java-cup-11b.jar" fork="true">
+            <arg value="-dump_grammar"/>
+            <arg value="src/parser/parser.cup"/>
+        </java>
+        <move todir="${java.dir}">
+            <fileset dir=".">
+                <include name="*.java"/>
+            </fileset>
+        </move>
+    </target>
+
+    <target name="compile" depends="lexer, parser">
+        <mkdir dir="${classes.dir}"/>
+        <javac srcdir="${src.dir}" destdir="${classes.dir}" classpath=".:${lib.dir}/java-cup-11b-runtime.jar:${lib.dir}/json-simple-1.1.1.jar">
+            <include name="java/*.java"/>
+            <include name="ast/expressions/*.java"/>
+            <include name="ast/main/*.java"/>
+            <include name="ast/statements/*.java"/>
+        </javac>
+    </target>
+
+    <target name="run" depends="compile">
+        <java classname="Main" fork="true">
+            <classpath>
+                <pathelement location=".:../../${lib.dir}/java-cup-11b-runtime.jar"/>
+                <pathelement location=".:../../${lib.dir}/json-simple-1.1.1.jar"/>
+                <pathelement path="${classes.dir}"/>
+            </classpath>
+            <arg value="${test.dir}/annotation_test.py"/>
+        </java>
+    </target>
+
+    <target name="clean">
+        <delete>
+            <fileset dir="${java.dir}" includes="parser.java,sym.java,Lexer.java"/>
+        </delete>
+        <delete includeemptydirs="true">
+            <fileset dir="${bin.dir}" includes="**/*"/>
+        </delete>
+        <delete failonerror="false">
+            <fileset includes="*.*~"/>
+        </delete>
+    </target>
+</project>

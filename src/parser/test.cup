@@ -1,0 +1,256 @@
+import java_cup.runtime.*;
+import src.ast.expressions.*;
+
+
+
+		 
+terminal INTEGER, FLOAT, BOOL, STRING, ID, 
+		 OR, AND, NOT, IF_STMT, ELSE_STMT, ELIF_STMT, WHILE_STMT,
+		 RETURN_STMT, LAMBDA, 		 
+		 IS, ISNOT, IN, NOTIN, BIT_AND, BIT_OR,		 
+		 BIT_XOR, BIT_NOT, RIGHT_SHIFT,
+		 LEFT_SHIFT, LSQB, RSQB, LPAR, RPAR,
+		 LBRACE, RBRACE, COMMA, DOT, COLON,
+		 SEMICOLON, ASSIGNMENT, ADDITION, WALRUS_ASSIGNMENT,
+		 SHORTADDITION, SUBSTRACTION, SHORTSUBSTRACTION,
+		 MULTIPLICATION, SHORTMULTIPLICATION, FLOATDIVISION,
+		 SHORTFLOATDIVISION, INTDIVISION, SHORTINTDIVISION,
+		 MODULO, SHORTMODULO, DEGREE, SHORTDEGREE, EQ, NE, GT,
+		 LT, GE, LE, NL, INDENT, DEDENT;
+
+
+non terminal file, statements, statement, simple_stmts, simple_stmt, 
+			 compound_stmt, assign_stmt, disjunction, conjunction, inversion, comparison, 
+			 comparison_expression, star_expressions, star_expression, expression, named_expression, 
+			 assignment_expression, comparator, lambdef, lambda_params, lambda_param_no_default,
+             lambda_param_with_default, lambda_slash_no_default, lambda_star_etc,
+             lambda_slash_with_default,
+			 bitwise_or, bitwise_xor, bitwise_and, shift_expr, 
+			 if_stmt, elif_stmt, while_stmt, for_stmt, else_block, block, return_stmt, 
+			 sum, term, factor, power, await_primary, primary, atom;
+
+
+
+
+precedence left file, statements, statement;
+precedence left statement, simple_stmts;
+precedence left statement, compound_stmt;
+precedence left simple_stmts, simple_stmt, star_expression;
+precedence left NL, INTEGER;
+precedence left NL, FLOAT;
+precedence left NL, BOOL;
+precedence left NL, STRING;
+precedence left NL, ID;
+
+
+precedence left COMMA, MULTIPLICATION;
+precedence left SEMICOLON, ID;
+precedence left sum, ADDITION;
+precedence left sum, SUBSTRACTION;
+precedence left factor;
+precedence left disjunction, IF_STMT;
+precedence left RETURN_STMT, inversion;
+precedence left block, ELIF_STMT, ELSE_STMT;
+precedence left statement, BIT_NOT, NOT, LAMBDA, WHILE_STMT;
+
+precedence left term, MULTIPLICATION;
+precedence left SEMICOLON, ID;
+
+
+
+// public void syntax_error(Symbol s){
+//     System.out.println("compiler has detected a syntax error at line " + s.left 
+//         + " column " + s.right);
+// }
+
+
+start with file;
+
+file ::= statements {: System.out.println("PARSER: file ::= statements"); :}
+	   ;
+
+statements ::= statement statements {: System.out.println("PARSER: statments ::= statement statements"); :}
+			 | statement {: System.out.println("PARSER: statements ::= statement"); :}
+			 ;
+
+statement ::= simple_stmts {: System.out.println("PARSER: statement ::= simple_stmts "); :}
+			 | compound_stmt {: System.out.println("PARSER: statement ::= compound_stmt "); :}
+			 ;
+
+
+
+simple_stmts ::= simple_stmt NL simple_stmts  {: System.out.println("PARSER: simple_stmts ::= simple_stmt NL simple_stmt"); :}
+			   | simple_stmt SEMICOLON simple_stmts {: System.out.println("PARSER: simple_stmts ::= simple_stmt SEMICOLON simple_stmts"); :}
+			   | simple_stmt NL {: System.out.println("PARSER: simple_stmts ::= simple_stmt NL"); :}
+			   | simple_stmt SEMICOLON {: System.out.println("PARSER: simple_stmts ::= simple_stmt SEMICOLON"); :}
+			   | simple_stmt {: System.out.println("PARSER: simple_stmts ::= simple_stmt"); :}
+			   ;
+
+compound_stmt ::= if_stmt {: System.out.println("PARSER: compound_sttm ::= if_stmt"); :}
+				| while_stmt
+				;
+
+//simple statements
+simple_stmt ::= assign_stmt  {: System.out.println("PARSER: simple_stmt ::= assign_stmt"); :}
+			  | star_expression {: System.out.println("PARSER: simple_stmt ::= star_expression"); :}
+			  | return_stmt  {: System.out.println("PARSER: simple_stmt ::= return_stmt"); :}
+			  ;
+
+assign_stmt ::= ID ASSIGNMENT star_expressions {: System.out.println("PARSER: assign_stmt ::= ID ASSIGNMENT star_expressions"); :}
+			  ;
+return_stmt ::= RETURN_STMT star_expressions {: System.out.println("PARSER: return_stmt ::= RETURN_STMT star_expressions"); :}
+			  | RETURN_STMT {: System.out.println("PARSER: return_stmt ::= RETURN_STMT"); :}
+			  ; 
+//TODO: INDENT, DEDENT common elements
+block ::= INDENT statements DEDENT {: System.out.println("PARSER: block ::= NL INDENT statements DEDENT"); :}
+		| simple_stmts {: System.out.println("PARSER: block ::= simple_stmts"); :}
+		;
+
+// expressions
+star_expressions ::= star_expression COMMA star_expressions {: System.out.println("PARSER: star_expressions ::= star_expression COMMA star_expressions"); :}
+				   | star_expression COMMA {: System.out.println("PARSER: star_expressions ::= star_expression COMMA"); :}
+				   | star_expression {: System.out.println("PARSER: star_expressions ::= star_expression"); :}
+				   ;
+
+star_expression ::= MULTIPLICATION bitwise_or {: System.out.println("PARSER: star_expression ::= MULTIPLICATION bitwise_or"); :}
+				  | expression	{: System.out.println("PARSER: star_expression ::= expression"); :}
+				  ;
+
+expression ::= disjunction IF_STMT disjunction ELSE_STMT expression
+			 | disjunction
+			 | lambdef
+			 ;
+
+
+assignment_expression ::= ID WALRUS_ASSIGNMENT expression;
+						
+//comparsion expressions to use in conditional statements
+comparison_expression ::= ID comparator expression
+						| expression comparator ID
+						;
+//comparators signs
+// comparator ::= EQ
+// 			| NE
+// 			| GT
+// 			| LT
+// 			| GE
+// 			| LE
+// 			;
+
+named_expression ::= expression 
+				    | assignment_expression
+					| expression WALRUS_ASSIGNMENT
+					| comparison_expression
+					; 
+
+disjunction ::= conjunction OR disjunction
+			  | conjunction
+			  ;
+
+conjunction ::= inversion AND conjunction
+			  | inversion
+			  ;
+
+inversion ::= NOT inversion
+			| comparison
+			;
+
+// comparisons
+comparison ::= bitwise_or;
+
+//compound statements
+
+//if statement
+
+if_stmt ::= IF_STMT named_expression COLON block elif_stmt {: System.out.println("PARSER: find if elif rule"); :}
+		  | IF_STMT named_expression COLON block else_block {: System.out.println("PARSER: find if else rule"); :}
+		  | IF_STMT INTEGER COLON block {: System.out.println("PARSER: find if rule"); :}
+		  ;
+
+elif_stmt ::= ELIF_STMT named_expression COLON block elif_stmt
+		  | ELIF_STMT named_expression COLON block else_block
+		  | ELIF_STMT named_expression COLON block
+		  ;
+else_block ::= ELSE_STMT COLON block;
+
+//while statement 
+
+
+/*bitwise operators*/
+bitwise_or ::= bitwise_or BIT_OR bitwise_xor
+			 | bitwise_xor
+			 ;
+
+bitwise_xor ::= bitwise_xor BIT_XOR bitwise_and
+			  | bitwise_and
+			  ;
+
+bitwise_and ::= bitwise_and BIT_AND shift_expr
+			  | shift_expr
+			  ;
+		
+shift_expr ::= shift_expr LEFT_SHIFT sum 	
+			 | shift_expr RIGHT_SHIFT sum
+			 | sum
+			 ;
+
+
+/*arithmetic operators*/
+sum ::= sum ADDITION term
+	  | sum SUBSTRACTION term
+	  | term;
+
+term ::= term MULTIPLICATION factor
+	   | term FLOATDIVISION factor
+	   | term INTDIVISION factor
+	   | term MODULO factor
+	   | factor
+	   ;
+
+factor ::= ADDITION factor
+		 | SUBSTRACTION factor
+		 | BIT_NOT factor
+		 | power
+		 ;
+
+power ::= await_primary DEGREE factor
+		| await_primary
+		;
+
+await_primary ::= primary
+				;
+
+primary ::= atom;
+
+
+//lambda functions
+// lambdef ::= LAMBDA COLON expression
+//         | LAMBDA lambda_params COLON expression
+//         ;
+
+// lambda_params ::= lambda_slash_no_default lambda_param_no_default lambda_param_with_default lambda_star_etc
+//         | lambda_slash_no_default lambda_param_no_default lambda_param_with_default
+//         | lambda_slash_with_default lambda_param_with_default lambda_star_etc
+//         | lambda_slash_with_default lambda_param_with_default
+//         | lambda_param_no_default lambda_param_with_default lambda_star_etc
+//         | lambda_param_no_default lambda_param_with_default 
+//         | lambda_param_with_default lambda_star_etc
+//         | lambda_param_with_default
+//         | lambda_star_etc
+//         ;
+		
+// lambda_slash_no_default ::= lambda_param_no_default FLOATDIVISION COMMA
+// 							| lambda_param_no_default FLOATDIVISION COLON
+// 							;
+
+// lambda_slash_with_default ::= lambda_param_no_default lambda_param_with_default FLOATDIVISION COMMA
+// 							| lambda_param_no_default lambda_param_with_default FLOATDIVISION COLON
+// 							;
+
+
+atom ::= INTEGER:i {: RESULT = new IntegerLiteral((int)i, ileft + 1, iright + 1, "file");:} 
+	   | FLOAT:f {: RESULT = new FloatLiteral((float)f, fleft + 1, fright + 1, "file"); :}
+	   | BOOL:b {: RESULT = new BooleanLiteral((boolean)b, bleft + 1, bright + 1, "file"); :}
+	   | STRING:s {: RESULT = new StringLiteral((String)s, sleft + 1, sright + 1, "file"); :}
+	   | ID
+	   ; 
